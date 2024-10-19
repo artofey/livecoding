@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as monaco from 'monaco-editor';
 import CodeEditor from '../components/CodeEditor'; // Adjust the path as necessary
 
 interface PeerConnection {
   peerConnection: RTCPeerConnection;
   dataChannel: RTCDataChannel | null;
+}
+
+interface CursorPosition {
+  lineNumber: number;
+  column: number;
 }
 
 
@@ -190,18 +194,15 @@ export default function Home() {
     console.log(content);
   };
 
-  const handleCursorChange = (position: monaco.Position, reason: monaco.editor.CursorChangeReason) => {
+  const handleCursorChange = (position: CursorPosition) => {
     // Логика отправки позиции курсора через WebSocket
-    console.log(position, reason);
+    console.log(position);
   };
 
-  const usersCursors = {
-    user1: new monaco.Position(3, 10),
-    user2: new monaco.Position(5, 8),
+  const usersCursors: Record<string, CursorPosition> = {
+    user1: { lineNumber: 1, column: 5 },
+    user2: { lineNumber: 2, column: 10 },
   };
-
-
-
 
   return (
     <div>
