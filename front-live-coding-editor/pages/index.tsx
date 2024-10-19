@@ -82,8 +82,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!isConnected) return;
-
-    ws.current = new WebSocket('ws://192.168.0.235:8080');
+    ws.current = new WebSocket('ws://livecoding-production.up.railway.app:8080');
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
