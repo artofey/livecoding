@@ -1,4 +1,4 @@
-import React, {  } from 'react';
+import React, { } from 'react';
 import { Editor, OnMount } from '@monaco-editor/react';
 
 interface CursorPosition {
@@ -7,14 +7,14 @@ interface CursorPosition {
 }
 
 interface CodeEditorProps {
-  initialValue: string;
+  text: string;
   onChange: (value: string) => void;
   onCursorChange: (position: CursorPosition) => void;
   usersCursors: Record<string, CursorPosition>;
 }
 
-const CodeEditor: React.FC<CodeEditorProps> = ({ initialValue, onChange, onCursorChange, usersCursors }) => {
-  const handleEditorChange = (value: string | undefined) => {
+const CodeEditor: React.FC<CodeEditorProps> = ({ text, onChange, onCursorChange, usersCursors }) => {
+    const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       onChange(value);
     }
@@ -40,9 +40,9 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ initialValue, onChange, onCurso
 
   return (
     <Editor
-      height="500px"
+      height="400px"
       defaultLanguage="javascript"
-      defaultValue={initialValue}
+      value={text}
       onChange={handleEditorChange}
       onMount={handleEditorDidMount}
     />

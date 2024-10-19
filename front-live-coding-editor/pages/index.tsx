@@ -14,7 +14,7 @@ interface CursorPosition {
 
 export default function Home() {
   const [peers, setPeers] = useState<{ [key: string]: PeerConnection }>({});
-  // const [editorText, setEditorText] = useState<string>('');
+  const [editorText, setEditorText] = useState<string>('');
   const [clientId, setClientId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const peersRef = useRef(peers);
@@ -144,7 +144,7 @@ export default function Home() {
     dataChannel.onopen = () => console.log(`Data channel opened with ${remoteClientId}`);
     dataChannel.onmessage = (event) => {
       console.log('Data channel message received:', event.data);
-      // setEditorText(event.data);
+      setEditorText(event.data);
     }
 
     setPeers(prev => ({
@@ -179,23 +179,18 @@ export default function Home() {
     }
   };
 
-  // const handleLocalTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-  //   const newText = e.target.value;
-  //   setEditorText(newText);
-  //   Object.values(peers).forEach(peer => {
-  //     if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-  //       peer.dataChannel.send(newText);
-  //     }
-  //   });
-  // };
-
   const handleContentChange = (content: string) => {
-    // Логика отправки контента через WebSocket
+    // Логика отправки контента через dataChannel
     console.log(content);
+    Object.values(peers).forEach(peer => {
+      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(content);
+      }
+    });
   };
 
   const handleCursorChange = (position: CursorPosition) => {
-    // Логика отправки позиции курсора через WebSocket
+    // Логика отправки позиции курсора через dataChannel
     console.log(position);
   };
 
@@ -219,7 +214,7 @@ export default function Home() {
             placeholder="Type something..."
           /> */}
           <CodeEditor
-            initialValue="console.log('Hello, world!');"
+            text={editorText}
             onChange={handleContentChange}
             onCursorChange={handleCursorChange}
             usersCursors={usersCursors}
