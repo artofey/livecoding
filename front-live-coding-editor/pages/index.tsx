@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import * as monaco from 'monaco-editor';
+import CodeEditor from '../components/CodeEditor'; // Adjust the path as necessary
 
 interface PeerConnection {
   peerConnection: RTCPeerConnection;
@@ -8,7 +10,7 @@ interface PeerConnection {
 
 export default function Home() {
   const [peers, setPeers] = useState<{ [key: string]: PeerConnection }>({});
-  const [editorText, setEditorText] = useState<string>('');
+  // const [editorText, setEditorText] = useState<string>('');
   const [clientId, setClientId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const peersRef = useRef(peers);
@@ -93,7 +95,7 @@ export default function Home() {
       } else {
         jsonData = event.data;
       }
-      
+
       try {
         const data = JSON.parse(jsonData);
         console.log('WebSocket message received:', data);
@@ -138,7 +140,7 @@ export default function Home() {
     dataChannel.onopen = () => console.log(`Data channel opened with ${remoteClientId}`);
     dataChannel.onmessage = (event) => {
       console.log('Data channel message received:', event.data);
-      setEditorText(event.data);
+      // setEditorText(event.data);
     }
 
     setPeers(prev => ({
@@ -173,15 +175,33 @@ export default function Home() {
     }
   };
 
-  const handleLocalTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = e.target.value;
-    setEditorText(newText);
-    Object.values(peers).forEach(peer => {
-      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        peer.dataChannel.send(newText);
-      }
-    });
+  // const handleLocalTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  //   const newText = e.target.value;
+  //   setEditorText(newText);
+  //   Object.values(peers).forEach(peer => {
+  //     if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+  //       peer.dataChannel.send(newText);
+  //     }
+  //   });
+  // };
+
+  const handleContentChange = (content: string) => {
+    // Логика отправки контента через WebSocket
+    console.log(content);
   };
+
+  const handleCursorChange = (position: monaco.Position, reason: monaco.editor.CursorChangeReason) => {
+    // Логика отправки позиции курсора через WebSocket
+    console.log(position, reason);
+  };
+
+  const usersCursors = {
+    user1: new monaco.Position(3, 10),
+    user2: new monaco.Position(5, 8),
+  };
+
+
+
 
   return (
     <div>
@@ -190,12 +210,18 @@ export default function Home() {
         <button onClick={startSession}>Start Session</button>
       ) : (
         <>
-          <textarea
+          {/* <textarea
             value={editorText}
             onChange={handleLocalTextChange}
             rows={10}
             cols={50}
             placeholder="Type something..."
+          /> */}
+          <CodeEditor
+            initialValue="console.log('Hello, world!');"
+            onChange={handleContentChange}
+            onCursorChange={handleCursorChange}
+            usersCursors={usersCursors}
           />
           {clientId && <p>Your client ID: {clientId}</p>}
           <p>Connected peers: {Object.keys(peers).join(', ')}</p>
