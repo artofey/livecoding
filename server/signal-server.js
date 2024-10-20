@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 18080 });
+const defaultPort = process.env.PORT || 3443;
+const wss = new WebSocket.Server({ port: defaultPort });
 
 const clients = new Map(); // Изменено с Set на Map для хранения WebSocket объектов
 
@@ -84,4 +85,4 @@ function broadcastClients(excludeClients = []) {
   });
 }
 
-console.log('WebSocket server is running on port 18080');
+console.log(`WebSocket server is running on port ${defaultPort}`);
