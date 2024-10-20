@@ -82,7 +82,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!isConnected) return;
-    ws.current = new WebSocket('ws://livecoding-production.up.railway.app:8080');
+    const addres = process.env.NEXT_PUBLIC_WS_SERVER;
+    if (!addres) {
+      console.error('WebSocket server address is not defined');
+      return;
+    }
+    console.log(addres);
+    ws.current = new WebSocket(addres);
 
     ws.current.onopen = () => {
       console.log('WebSocket connection established');
