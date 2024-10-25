@@ -1,6 +1,8 @@
 ## Этапы реализации
 - [x] общее текстовое поле с доступом для всех пользователей
-- [ ] добавить редактор кода
+- [x] добавить редактор кода
+- [x] переписать сервер на Go
+- [ ] добавить логику работы с комнатами
 
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
