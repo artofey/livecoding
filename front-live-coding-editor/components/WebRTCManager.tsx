@@ -33,11 +33,22 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
     peerConnection.oniceconnectionstatechange = () => {
       console.log(`ICE connection state with ${remoteClientId}:`, 
         peerConnection.iceConnectionState);
+      
+      if (peerConnection.iceConnectionState === 'disconnected' || 
+          peerConnection.iceConnectionState === 'failed' || 
+          peerConnection.iceConnectionState === 'closed') {
+        cleanupPeerConnection(remoteClientId);
+      }
     };
 
     peerConnection.onconnectionstatechange = () => {
       console.log(`Connection state with ${remoteClientId}:`, 
         peerConnection.connectionState);
+      
+      if (peerConnection.connectionState === 'failed' || 
+          peerConnection.connectionState === 'closed') {
+        cleanupPeerConnection(remoteClientId);
+      }
     };
 
     peerConnection.onicecandidate = (event) => {
@@ -132,6 +143,30 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
     }
   };
 
+  const cleanupPeerConnection = (peerId: string) => {
+    const peer = peersRef.current[peerId];
+    if (peer) {
+      // Закрываем data channel
+      if (peer.dataChannel) {
+        peer.dataChannel.close();
+      }
+      
+      // Закрываем peer connection
+      if (peer.peerConnection) {
+        peer.peerConnection.close();
+      }
+      
+      // Удаляем пир из состояния
+      setPeers(prev => {
+        const newPeers = { ...prev };
+        delete newPeers[peerId];
+        return newPeers;
+      });
+      
+      console.log(`Cleaned up peer connection with ${peerId}`);
+    }
+  };
+
   useEffect(() => {
     if (!isConnected || !roomId || !clientId) return;
     
@@ -170,8 +205,20 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
             switch (data.type) {
                 case 'clients':
                     console.log('Clients in room:', data.clients);
+                    // Находим отключившихся клиентов
+                    const currentPeerIds = Object.keys(peersRef.current);
+                    const disconnectedPeers = currentPeerIds.filter(
+                        peerId => !data.clients.includes(peerId) && peerId !== clientId
+                    );
+                    
+                    // Очищаем отключившихся клиентов
+                    disconnectedPeers.forEach(peerId => {
+                        cleanupPeerConnection(peerId);
+                    });
+                    
+                    // Создаем соединения с новыми клиентами
                     data.clients.forEach((remoteClientId: string) => {
-                        if (remoteClientId !== clientId) {
+                        if (remoteClientId !== clientId && !peersRef.current[remoteClientId]) {
                             createPeerConnection(remoteClientId, true);
                         }
                     });
@@ -195,6 +242,10 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
     };
 
     return () => {
+        // Очищаем все соединения при размонтировании
+        Object.keys(peersRef.current).forEach(peerId => {
+            cleanupPeerConnection(peerId);
+        });
         ws.current?.close();
     };
 }, [isConnected, clientId, roomId, createPeerConnection]);
@@ -207,6 +258,8 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
           console.log(`Data sent to ${peerId}:`, content);
         } catch (error) {
           console.error(`Error sending data to ${peerId}:`, error);
+          // Если возникла ошибка при отправке, очищаем соединение
+          cleanupPeerConnection(peerId);
         }
       } else {
         console.warn(`Cannot send to ${peerId}, channel state:`, 
