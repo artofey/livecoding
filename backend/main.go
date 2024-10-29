@@ -21,12 +21,13 @@ var (
 )
 
 type Client struct {
-	Id   string
-	Conn *websocket.Conn
+	Id     string
+	RoomId string
+	Conn   *websocket.Conn
 }
 
-func NewClient(id string, conn *websocket.Conn) *Client {
-	return &Client{Id: id, Conn: conn}
+func NewClient(id string, roomId string, conn *websocket.Conn) *Client {
+	return &Client{Id: id, RoomId: roomId, Conn: conn}
 }
 
 type MessageType string
@@ -35,6 +36,8 @@ const (
 	TypeNewClient  MessageType = "newClient"
 	TypeGetClients MessageType = "getClients"
 	TypeClients    MessageType = "clients"
+	TypeCreateRoom MessageType = "createRoom"
+	TypeJoinRoom   MessageType = "joinRoom"
 )
 
 const (
@@ -47,6 +50,7 @@ type Message struct {
 	Type      MessageType     `json:"type"`
 	ClientId  string          `json:"clientId,omitempty"`
 	SenderId  string          `json:"senderId,omitempty"`
+	RoomId    string          `json:"roomId,omitempty"`
 	Clients   []string        `json:"clients,omitempty"`
 	Offer     json.RawMessage `json:"offer,omitempty"`
 	Answer    json.RawMessage `json:"answer,omitempty"`
@@ -81,14 +85,15 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("Message received: %+v", msg)
 
+		if msg.Type == TypeCreateRoom || msg.Type == TypeJoinRoom {
+			senderID = msg.ClientId
+		}
+
 		switch msg.Type {
-		case TypeNewClient:
-			if senderID == "" {
-				senderID = msg.ClientId
-			}
-			handleNewClient(conn, msg.ClientId)
+		case TypeCreateRoom, TypeJoinRoom:
+			handleRoomOperation(conn, msg.ClientId, msg.RoomId)
 		case TypeGetClients:
-			sendClientList(conn)
+			sendClientList(conn, msg.RoomId)
 		case TypeOffer, TypeAnswer, TypeCandidate:
 			forwardMessage(senderID, msg)
 		default:
@@ -97,20 +102,22 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleNewClient(conn *websocket.Conn, clientId string) {
+func handleRoomOperation(conn *websocket.Conn, clientId string, roomId string) {
 	clientsMu.Lock()
-	clients[clientId] = NewClient(clientId, conn)
+	clients[clientId] = NewClient(clientId, roomId, conn)
 	clientsMu.Unlock()
 
-	log.Printf("New client registered: %s", clientId)
-	broadcastClients([]string{clientId})
+	log.Printf("Client %s joined room %s", clientId, roomId)
+	broadcastClientsInRoom(roomId, []string{clientId})
 }
 
-func sendClientList(conn *websocket.Conn) {
+func sendClientList(conn *websocket.Conn, roomId string) {
 	clientsMu.Lock()
-	clientList := make([]string, 0, len(clients))
-	for id := range clients {
-		clientList = append(clientList, id)
+	clientList := make([]string, 0)
+	for id, client := range clients {
+		if client.RoomId == roomId {
+			clientList = append(clientList, id)
+		}
 	}
 	clientsMu.Unlock()
 
@@ -137,26 +144,30 @@ func forwardMessage(senderID string, msg Message) {
 func handleClientDisconnection(conn *websocket.Conn) {
 	clientsMu.Lock()
 	clientId := getClientId(conn)
+	client := clients[clientId]
+	roomId := client.RoomId
 	delete(clients, clientId)
 	clientsMu.Unlock()
 
 	log.Printf("Client disconnected: %s", clientId)
-	broadcastClients(nil)
+	broadcastClientsInRoom(roomId, nil)
 }
 
-func broadcastClients(excludeClients []string) {
+func broadcastClientsInRoom(roomId string, excludeClients []string) {
 	clientsMu.Lock()
-	clientList := make([]string, 0, len(clients))
-	for id := range clients {
-		clientList = append(clientList, id)
+	clientList := make([]string, 0)
+	for id, client := range clients {
+		if client.RoomId == roomId {
+			clientList = append(clientList, id)
+		}
 	}
 	clientsMu.Unlock()
 
 	message := Message{Type: TypeClients, Clients: clientList}
 	msgBytes, _ := json.Marshal(message)
 
-	for id, client := range clients {
-		if client == nil || contains(excludeClients, id) {
+	for _, client := range clients {
+		if client == nil || contains(excludeClients, client.Id) || client.RoomId != roomId {
 			continue
 		}
 		client.Conn.WriteMessage(websocket.TextMessage, msgBytes)

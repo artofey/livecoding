@@ -7,11 +7,12 @@ interface PeerConnection {
 
 interface WebRTCManagerProps {
   clientId: string | null;
+  roomId: string | null;
   isConnected: boolean;
   onDataReceived: (data: string) => void;
 }
 
-export const useWebRTCManager = ({ clientId, isConnected, onDataReceived }: WebRTCManagerProps) => {
+export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived }: WebRTCManagerProps) => {
   const [peers, setPeers] = useState<{ [key: string]: PeerConnection }>({});
   const peersRef = useRef(peers);
   const ws = useRef<WebSocket | null>(null);
@@ -28,6 +29,16 @@ export const useWebRTCManager = ({ clientId, isConnected, onDataReceived }: WebR
     const peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
+
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state with ${remoteClientId}:`, 
+        peerConnection.iceConnectionState);
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`Connection state with ${remoteClientId}:`, 
+        peerConnection.connectionState);
+    };
 
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
@@ -72,11 +83,22 @@ export const useWebRTCManager = ({ clientId, isConnected, onDataReceived }: WebR
   }, []);
 
   const setupDataChannel = (dataChannel: RTCDataChannel, remoteClientId: string) => {
-    dataChannel.onopen = () => console.log(`Data channel opened with ${remoteClientId}`);
+    dataChannel.onopen = () => {
+      console.log(`Data channel opened with ${remoteClientId}`);
+    };
+    
+    dataChannel.onclose = () => {
+      console.log(`Data channel closed with ${remoteClientId}`);
+    };
+    
+    dataChannel.onerror = (error) => {
+      console.error(`Data channel error with ${remoteClientId}:`, error);
+    };
+    
     dataChannel.onmessage = (event) => {
-      console.log('Data channel message received:', event.data);
+      console.log(`Data received from ${remoteClientId}:`, event.data);
       onDataReceived(event.data);
-    }
+    };
 
     setPeers(prev => ({
       ...prev,
@@ -111,58 +133,84 @@ export const useWebRTCManager = ({ clientId, isConnected, onDataReceived }: WebR
   };
 
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected || !roomId || !clientId) return;
+    
     const address = process.env.NEXT_PUBLIC_WS_SERVER;
     if (!address) {
-      console.error('WebSocket server address is not defined');
-      return;
+        console.error('WebSocket server address is not defined');
+        return;
     }
 
     ws.current = new WebSocket(address);
 
     ws.current.onopen = () => {
-      if (clientId) {
-        ws.current?.send(JSON.stringify({ type: 'newClient', clientId }));
-      }
+        console.log('WebSocket connected');
+        ws.current?.send(JSON.stringify({ 
+            type: 'joinRoom', 
+            clientId,
+            roomId 
+        }));
+    };
+
+    ws.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+
+    ws.current.onclose = () => {
+        console.log('WebSocket closed');
     };
 
     ws.current.onmessage = async (event: MessageEvent) => {
-      const jsonData = event.data instanceof Blob ? await event.data.text() : event.data;
+        const jsonData = event.data instanceof Blob ? await event.data.text() : event.data;
 
-      try {
-        const data = JSON.parse(jsonData);
-        switch (data.type) {
-          case 'clients':
-            data.clients.forEach((remoteClientId: string) => {
-              if (remoteClientId !== clientId) {
-                createPeerConnection(remoteClientId, true);
-              }
-            });
-            break;
-          case 'offer':
-            await handleOffer(data.offer, data.senderId);
-            break;
-          case 'answer':
-            await handleAnswer(data.answer, data.senderId);
-            break;
-          case 'candidate':
-            await handleCandidate(data.candidate, data.senderId);
-            break;
+        try {
+            const data = JSON.parse(jsonData);
+            console.log('WebSocket message received:', data);
+            
+            switch (data.type) {
+                case 'clients':
+                    console.log('Clients in room:', data.clients);
+                    data.clients.forEach((remoteClientId: string) => {
+                        if (remoteClientId !== clientId) {
+                            createPeerConnection(remoteClientId, true);
+                        }
+                    });
+                    break;
+                case 'offer':
+                    console.log('Received offer from:', data.senderId);
+                    await handleOffer(data.offer, data.senderId);
+                    break;
+                case 'answer':
+                    console.log('Received answer from:', data.senderId);
+                    await handleAnswer(data.answer, data.senderId);
+                    break;
+                case 'candidate':
+                    console.log('Received ICE candidate from:', data.senderId);
+                    await handleCandidate(data.candidate, data.senderId);
+                    break;
+            }
+        } catch (error) {
+            console.error('Error processing WebSocket message:', error);
         }
-      } catch (error) {
-        console.error('Error processing WebSocket message:', error);
-      }
     };
 
     return () => {
-      ws.current?.close();
+        ws.current?.close();
     };
-  }, [isConnected, clientId, createPeerConnection]);
+}, [isConnected, clientId, roomId, createPeerConnection]);
 
   const sendData = (content: string) => {
-    Object.values(peers).forEach(peer => {
+    Object.entries(peers).forEach(([peerId, peer]) => {
       if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        peer.dataChannel.send(content);
+        try {
+          peer.dataChannel.send(content);
+          console.log(`Data sent to ${peerId}:`, content);
+        } catch (error) {
+          console.error(`Error sending data to ${peerId}:`, error);
+        }
+      } else {
+        console.warn(`Cannot send to ${peerId}, channel state:`, 
+          peer.dataChannel ? peer.dataChannel.readyState : 'null');
       }
     });
   };
