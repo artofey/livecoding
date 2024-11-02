@@ -143,34 +143,73 @@ func forwardMessage(senderID string, msg Message) {
 
 func handleClientDisconnection(conn *websocket.Conn) {
 	clientsMu.Lock()
-	clientId := getClientId(conn)
-	client := clients[clientId]
-	roomId := client.RoomId
-	delete(clients, clientId)
-	clientsMu.Unlock()
+	defer clientsMu.Unlock()
 
-	log.Printf("Client disconnected: %s", clientId)
-	broadcastClientsInRoom(roomId, nil)
+	// Получаем ID клиента и сохраняем roomId до удаления
+	clientId := getClientId(conn)
+	if clientId == "" {
+		log.Printf("Unable to find client for disconnected connection")
+		return
+	}
+
+	client, exists := clients[clientId]
+	if !exists {
+		log.Printf("Client %s not found in clients map", clientId)
+		return
+	}
+
+	// Сохраняем roomId до удаления клиента
+	roomId := client.RoomId
+
+	// Удаляем клиента
+	delete(clients, clientId)
+	log.Printf("Client disconnected: %s from room: %s", clientId, roomId)
+
+	// Отправляем обновленный список клиентов остальным участникам комнаты
+	if roomId != "" {
+		// Разблокируем мьютекс перед broadcast
+		clientsMu.Unlock()
+		broadcastClientsInRoom(roomId, nil)
+		clientsMu.Lock()
+	}
 }
 
 func broadcastClientsInRoom(roomId string, excludeClients []string) {
+	if roomId == "" {
+		return
+	}
+
 	clientsMu.Lock()
+	defer clientsMu.Unlock()
+
+	// Собираем список клиентов в комнате
 	clientList := make([]string, 0)
 	for id, client := range clients {
-		if client.RoomId == roomId {
+		if client != nil && client.RoomId == roomId {
 			clientList = append(clientList, id)
 		}
 	}
-	clientsMu.Unlock()
 
+	// Создаем сообщение
 	message := Message{Type: TypeClients, Clients: clientList}
-	msgBytes, _ := json.Marshal(message)
+	msgBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling clients message: %v", err)
+		return
+	}
 
+	// Отправляем сообщение всем клиентам в комнате
 	for _, client := range clients {
-		if client == nil || contains(excludeClients, client.Id) || client.RoomId != roomId {
+		if client == nil ||
+			client.RoomId != roomId ||
+			contains(excludeClients, client.Id) {
 			continue
 		}
-		client.Conn.WriteMessage(websocket.TextMessage, msgBytes)
+
+		err := client.Conn.WriteMessage(websocket.TextMessage, msgBytes)
+		if err != nil {
+			log.Printf("Error sending message to client %s: %v", client.Id, err)
+		}
 	}
 }
 

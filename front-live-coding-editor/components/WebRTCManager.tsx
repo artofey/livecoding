@@ -4,6 +4,7 @@ interface PeerConnection {
   peerConnection: RTCPeerConnection;
   dataChannel: RTCDataChannel | null;
   audioStream?: MediaStream;
+  audioElement?: HTMLAudioElement;
 }
 
 interface WebRTCManagerProps {
@@ -126,13 +127,25 @@ export const useWebRTCManager = ({
     peerConnection.ontrack = (event) => {
       console.log('Received remote track:', event.track);
       const [remoteStream] = event.streams;
+      
+      const audioElement = new Audio();
+      audioElement.autoplay = true;
+      audioElement.srcObject = remoteStream;
+      
       setPeers(prev => ({
         ...prev,
         [remoteClientId]: { 
           ...prev[remoteClientId], 
-          audioStream: remoteStream 
+          audioStream: remoteStream,
+          audioElement: audioElement
         }
       }));
+
+      peersRef.current[remoteClientId] = {
+        ...peersRef.current[remoteClientId],
+        audioStream: remoteStream,
+        audioElement: audioElement
+      };
     };
 
     return peerConnection;
@@ -202,6 +215,11 @@ export const useWebRTCManager = ({
       
       if (peer.audioStream) {
         peer.audioStream.getTracks().forEach(track => track.stop());
+      }
+      
+      if (peer.audioElement) {
+        peer.audioElement.srcObject = null;
+        peer.audioElement.remove();
       }
       
       if (peer.peerConnection) {
@@ -331,6 +349,18 @@ export const useWebRTCManager = ({
       }
     };
   }, [isAudioEnabled, isConnected, initializeUserMedia]);
+
+  useEffect(() => {
+    Object.values(peersRef.current).forEach(peer => {
+      if (peer.audioElement) {
+        if (isAudioEnabled) {
+          peer.audioElement.play().catch(console.error);
+        } else {
+          peer.audioElement.pause();
+        }
+      }
+    });
+  }, [isAudioEnabled]);
 
   return {
     peers,
