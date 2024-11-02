@@ -10,16 +10,22 @@ interface WebRTCManagerProps {
   roomId: string | null;
   isConnected: boolean;
   onDataReceived: (data: string) => void;
+  currentContent: string;
 }
 
-export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived }: WebRTCManagerProps) => {
+export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived, currentContent }: WebRTCManagerProps) => {
   const [peers, setPeers] = useState<{ [key: string]: PeerConnection }>({});
   const peersRef = useRef(peers);
   const ws = useRef<WebSocket | null>(null);
+  const currentContentRef = useRef(currentContent);
 
   useEffect(() => {
     peersRef.current = peers;
   }, [peers]);
+
+  useEffect(() => {
+    currentContentRef.current = currentContent;
+  }, [currentContent]);
 
   const createPeerConnection = useCallback((remoteClientId: string, isInitiator: boolean) => {
     if (peersRef.current[remoteClientId]?.peerConnection) {
@@ -96,6 +102,11 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
   const setupDataChannel = (dataChannel: RTCDataChannel, remoteClientId: string) => {
     dataChannel.onopen = () => {
       console.log(`Data channel opened with ${remoteClientId}`);
+      console.log('currentContent ref value:', currentContentRef.current);
+      if (dataChannel.label === 'textSync' && currentContentRef.current) {
+        console.log('Sending current content:', currentContentRef.current);
+        dataChannel.send(currentContentRef.current);
+      }
     };
     
     dataChannel.onclose = () => {

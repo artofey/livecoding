@@ -18,7 +18,8 @@ export default function Home() {
     clientId,
     roomId,
     isConnected,
-    onDataReceived: (data) => setEditorText(data)
+    onDataReceived: (data) => setEditorText(data),
+    currentContent: editorText,
   });
 
   const createRoom = () => {
@@ -39,6 +40,7 @@ export default function Home() {
   };
 
   const handleContentChange = (content: string) => {
+    setEditorText(content);
     sendData(content);
   };
 
