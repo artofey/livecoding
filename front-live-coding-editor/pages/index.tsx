@@ -13,6 +13,7 @@ export default function Home() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState('');
+  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 
   const { peers, sendData } = useWebRTCManager({
     clientId,
@@ -20,6 +21,7 @@ export default function Home() {
     isConnected,
     onDataReceived: (data) => setEditorText(data),
     currentContent: editorText,
+    isAudioEnabled,
   });
 
   const createRoom = () => {
@@ -71,6 +73,22 @@ export default function Home() {
         </div>
       ) : (
         <>
+          <div style={{ marginBottom: '1rem' }}>
+            <button 
+              onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+              style={{ 
+                backgroundColor: isAudioEnabled ? '#4CAF50' : '#f44336',
+                color: 'white',
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              {isAudioEnabled ? 'Disable Audio' : 'Enable Audio'}
+            </button>
+          </div>
+          
           <CodeEditor
             text={editorText}
             onChange={handleContentChange}

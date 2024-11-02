@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 interface PeerConnection {
   peerConnection: RTCPeerConnection;
   dataChannel: RTCDataChannel | null;
+  audioStream?: MediaStream;
 }
 
 interface WebRTCManagerProps {
@@ -11,13 +12,22 @@ interface WebRTCManagerProps {
   isConnected: boolean;
   onDataReceived: (data: string) => void;
   currentContent: string;
+  isAudioEnabled?: boolean;
 }
 
-export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived, currentContent }: WebRTCManagerProps) => {
+export const useWebRTCManager = ({ 
+  clientId, 
+  roomId, 
+  isConnected, 
+  onDataReceived, 
+  currentContent,
+  isAudioEnabled = false 
+}: WebRTCManagerProps) => {
   const [peers, setPeers] = useState<{ [key: string]: PeerConnection }>({});
   const peersRef = useRef(peers);
   const ws = useRef<WebSocket | null>(null);
   const currentContentRef = useRef(currentContent);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
     peersRef.current = peers;
@@ -27,6 +37,17 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
     currentContentRef.current = currentContent;
   }, [currentContent]);
 
+  const initializeUserMedia = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setLocalStream(stream);
+      return stream;
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      return null;
+    }
+  }, []);
+
   const createPeerConnection = useCallback((remoteClientId: string, isInitiator: boolean) => {
     if (peersRef.current[remoteClientId]?.peerConnection) {
       return peersRef.current[remoteClientId].peerConnection;
@@ -35,6 +56,12 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
     const peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
+
+    if (isAudioEnabled && localStream) {
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+    }
 
     peerConnection.oniceconnectionstatechange = () => {
       console.log(`ICE connection state with ${remoteClientId}:`, 
@@ -96,8 +123,20 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
         });
     }
 
+    peerConnection.ontrack = (event) => {
+      console.log('Received remote track:', event.track);
+      const [remoteStream] = event.streams;
+      setPeers(prev => ({
+        ...prev,
+        [remoteClientId]: { 
+          ...prev[remoteClientId], 
+          audioStream: remoteStream 
+        }
+      }));
+    };
+
     return peerConnection;
-  }, []);
+  }, [isAudioEnabled, localStream]);
 
   const setupDataChannel = (dataChannel: RTCDataChannel, remoteClientId: string) => {
     dataChannel.onopen = () => {
@@ -157,24 +196,23 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
   const cleanupPeerConnection = (peerId: string) => {
     const peer = peersRef.current[peerId];
     if (peer) {
-      // Закрываем data channel
       if (peer.dataChannel) {
         peer.dataChannel.close();
       }
       
-      // Закрываем peer connection
+      if (peer.audioStream) {
+        peer.audioStream.getTracks().forEach(track => track.stop());
+      }
+      
       if (peer.peerConnection) {
         peer.peerConnection.close();
       }
       
-      // Удаляем пир из состояния
       setPeers(prev => {
         const newPeers = { ...prev };
         delete newPeers[peerId];
         return newPeers;
       });
-      
-      console.log(`Cleaned up peer connection with ${peerId}`);
     }
   };
 
@@ -278,6 +316,21 @@ export const useWebRTCManager = ({ clientId, roomId, isConnected, onDataReceived
       }
     });
   };
+
+  useEffect(() => {
+    if (isAudioEnabled && isConnected) {
+      initializeUserMedia();
+    } else if (!isAudioEnabled && localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
+    }
+
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isAudioEnabled, isConnected, initializeUserMedia]);
 
   return {
     peers,
